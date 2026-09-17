@@ -51,6 +51,16 @@ on:
         required: false
         default: ""
         type: string
+      cache_from:
+        description: Docker cache sources (newline-delimited). Set to an empty string to disable cache imports.
+        required: false
+        default: "type=gha"
+        type: string
+      cache_to:
+        description: Docker cache destinations (newline-delimited). Set to an empty string to disable cache exports.
+        required: false
+        default: "type=gha,mode=max"
+        type: string
       build_args:
         description: Optional newline-delimited string of Docker build args (KEY=VALUE per line).
         required: false
@@ -177,6 +187,8 @@ jobs:
       registry_account_id: ${{ inputs.registry_account_id }}
       aws_registry_role_name: ${{ inputs.aws_registry_role_name }}
       aws_registry_role_to_assume: ${{ inputs.aws_registry_role_to_assume }}
+      cache_from: ${{ inputs.cache_from }}
+      cache_to: ${{ inputs.cache_to }}
       build_args: ${{ inputs.build_args }}
       run_unit_tests: ${{ inputs.run_unit_tests }}
       unit_test_command: ${{ inputs.unit_test_command }}

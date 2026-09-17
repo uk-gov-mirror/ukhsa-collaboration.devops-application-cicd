@@ -39,6 +39,8 @@ The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs
 ## Frequently Used Inputs
 | Input | Type | Default | Purpose |
 | --- | --- | --- | --- |
+| `cache_from` | string | `type=gha` | Docker cache sources; override with another backend or `""` to disable imports. |
+| `cache_to` | string | `type=gha,mode=max` | Docker cache destinations; override with another backend or `""` to disable exports. |
 | `runner_labels` | string | `["ubuntu-latest"]` | JSON array of runner labels. |
 | `run_unit_tests` | boolean | `true` | Enable/disable unit tests. |
 | `unit_test_command` | string | `pytest -q` | Command executed for unit tests. |
@@ -59,6 +61,8 @@ The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs
 | `ecr_registry_namespace` | string | "" | The namespace of the ECR registry. Uses `service_identifier` if left empty. |
 
 > Additional inputs are documented inline in `.github/workflows/container-image-build-python-aws-ecs.yml` but are not typically changed.
+
+Docker layer caching is enabled whether or not the image is pushed. Both cache inputs accept newline-delimited values. For local `act` runs or runners without GitHub cache access, set both inputs to `""` or configure another backend. When building multiple images in one repository, use matching, distinct `scope` values in `cache_from` and `cache_to` for each image (for example, `type=gha,scope=my-app` and `type=gha,mode=max,scope=my-app`).
 
 ## Deployment Matrix Schema
 Provide `deploy_environments` as a JSON array. Each object supports:
@@ -230,9 +234,6 @@ act pull_request -W .github/workflows/_test-container-image-build-python-aws-ecs
 - When `ssm_parameter_name` is provided, the workflow stores the immutable image reference rather than a mutable tag.
 - This pattern assumes your Terraform pipeline reads that SSM parameter value during infra/apply runs and uses it as the image version source of truth.
 - Reading the version from Parameter Store prevents config churn between application and infrastructure pipelines by decoupling image promotion from Terraform code changes.
-
-## Notes
-- Caching is intentionally minimal to ensure compatibility with self-hosted runners without GitHub cache services.
 
 ## Limitations
 
