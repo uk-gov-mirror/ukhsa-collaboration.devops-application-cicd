@@ -1,0 +1,70 @@
+name: "Test Container Image Build Workflow - JavaScript"
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/_test-container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/_skip_test-container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/build-test-container.yml
+      - .github/workflows/deploy-aws-ecs.yml
+      - fixtures/javascript_container_app*/**
+      - docs/container-image-build-javascript-aws-ecs.md
+      - tests/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  package-manager-contracts:
+    name: Package manager configuration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -m unittest discover -s tests -v
+
+  regression:
+    name: JavaScript container (${{ matrix.manager }}, checks=${{ matrix.checks }})
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [true, false]
+        manager: [npm, pnpm, yarn]
+        include:
+          - manager: npm
+            fixture: fixtures/javascript_container_app
+          - manager: pnpm
+            fixture: fixtures/javascript_container_app_pnpm
+          - manager: yarn
+            fixture: fixtures/javascript_container_app_yarn
+    uses: ./.github/workflows/container-image-build-javascript-aws-ecs.yml
+    with:
+      app_name: sample-${{ matrix.manager }}-${{ matrix.checks }}
+      service_identifier: reusable
+      package_manager: ${{ matrix.manager }}
+      node_version_file: ${{ matrix.fixture }}/.nvmrc
+      javascript_working_directory: ${{ matrix.fixture }}
+      docker_context: .
+      dockerfile: ${{ matrix.fixture }}/Dockerfile
+      build_args: |
+        FIXTURE_MESSAGE_SUFFIX=runtime-check
+      cache_from: type=gha,scope=${{ matrix.manager }}-${{ matrix.checks }}
+      cache_to: type=gha,mode=max,scope=${{ matrix.manager }}-${{ matrix.checks }}
+      lint_javascript: ${{ matrix.checks }}
+      run_unit_tests: ${{ matrix.checks }}
+      coverage_artifact_path: ${{ matrix.fixture }}/coverage/
+      run_integration_tests: ${{ matrix.checks }}
+      integration_test_command: ${{ matrix.manager }} run build && test -s dist/app.js
+      integration_artifact_path: ${{ matrix.fixture }}/dist/
+      run_container_smoke_test: true
+      container_smoke_test_command: bash ${{ matrix.fixture }}/smoke-test.sh
+      push_image: false

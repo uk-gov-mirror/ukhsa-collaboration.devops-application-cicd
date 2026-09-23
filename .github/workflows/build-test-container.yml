@@ -3,6 +3,53 @@ name: "Build and Test Container"
 on:
   workflow_call:
     inputs:
+      runtime:
+        description: Application runtime (python or javascript).
+        required: false
+        default: "python"
+        type: string
+      package_manager:
+        description: JavaScript package manager (npm, pnpm, or modern Yarn with node-modules linking).
+        required: false
+        default: "npm"
+        type: string
+      package_manager_version:
+        description: Exact package manager version; must agree with package.json when both are supplied. Required for pnpm/Yarn unless package.json pins it.
+        required: false
+        default: ""
+        type: string
+      node_version:
+        description: Node.js version; overrides node_version_file. Defaults to 22 when neither is supplied.
+        required: false
+        default: ""
+        type: string
+      node_version_file:
+        description: Repository-relative Node.js version file (for example .nvmrc).
+        required: false
+        default: ""
+        type: string
+      javascript_working_directory:
+        description: Package directory relative to the repository root, independent of docker_context.
+        required: false
+        default: "."
+        type: string
+      lint_javascript:
+        description: Run the JavaScript lint command.
+        required: false
+        default: true
+        type: boolean
+      javascript_lint_command:
+        description: Lint command executed in javascript_working_directory.
+        required: false
+        default: ""
+        type: string
+      coverage_artifact_path:
+        description: Repository-relative coverage paths (newline-delimited).
+        required: false
+        default: |
+          coverage.xml
+          htmlcov/
+        type: string
       app_name:
         required: true
         type: string
@@ -61,7 +108,7 @@ on:
         type: boolean
       unit_test_command:
         required: false
-        default: "pytest -q"
+        default: ""
         type: string
       run_integration_tests:
         required: false
@@ -148,6 +195,15 @@ jobs:
       - name: Checkout caller repository
         uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
 
+      - name: Validate runtime
+        env:
+          RUNTIME: ${{ inputs.runtime }}
+        run: |
+          case "$RUNTIME" in
+            python|javascript) ;;
+            *) echo "runtime must be python or javascript" >&2; exit 1 ;;
+          esac
+
       - name: Resolve image repository
         id: image-repository
         env:
@@ -220,30 +276,30 @@ jobs:
           docker run --rm -i hadolint/hadolint:2.12.0 hadolint - < "$DOCKERFILE"
 
       - name: Set up Python
-        if: inputs.lint_python || inputs.run_unit_tests || inputs.run_integration_tests
+        if: inputs.runtime == 'python' && (inputs.lint_python || inputs.run_unit_tests || inputs.run_integration_tests)
         id: setup-python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
 
       - name: Install Ruff
-        if: inputs.lint_python
+        if: inputs.runtime == 'python' && inputs.lint_python
         run: python -m pip install ruff
 
       - name: Ruff formatting
-        if: inputs.lint_python
+        if: inputs.runtime == 'python' && inputs.lint_python
         id: ruff-format
         env:
           NO_COLOR: 1
         run: ruff format --check --diff ${{ inputs.docker_context }}
 
       - name: Ruff linting
-        if: inputs.lint_python
+        if: inputs.runtime == 'python' && inputs.lint_python
         id: ruff-lint
         env:
           NO_COLOR: 1
         run: ruff check --diff ${{ inputs.docker_context }}
 
       - name: Generate dependency cache manifest
-        if: inputs.run_unit_tests || inputs.run_integration_tests
+        if: inputs.runtime == 'python' && (inputs.run_unit_tests || inputs.run_integration_tests)
         env:
           PIP_EXTRAS: ${{ inputs.pip_install_extras }}
           DOCKER_CONTEXT: ${{ inputs.docker_context }}
@@ -300,7 +356,7 @@ jobs:
           fi
 
       - name: Configure Python dependency caching
-        if: inputs.run_unit_tests || inputs.run_integration_tests
+        if: inputs.runtime == 'python' && (inputs.run_unit_tests || inputs.run_integration_tests)
         uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
           path: |
@@ -312,7 +368,7 @@ jobs:
             ${{ runner.os }}-pydeps-
 
       - name: Install project dependencies
-        if: inputs.run_unit_tests || inputs.run_integration_tests
+        if: inputs.runtime == 'python' && (inputs.run_unit_tests || inputs.run_integration_tests)
         env:
           PIP_EXTRAS: ${{ inputs.pip_install_extras }}
           DOCKER_CONTEXT: ${{ inputs.docker_context }}
@@ -357,28 +413,137 @@ jobs:
             fi
           fi
 
+      - name: Set up Node.js
+        id: setup-node
+        if: inputs.runtime == 'javascript' && (inputs.lint_javascript || inputs.run_unit_tests || inputs.run_integration_tests)
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ inputs.node_version != '' && inputs.node_version || (inputs.node_version_file == '' && '22' || '') }}
+          node-version-file: ${{ inputs.node_version_file }}
+
+      # Keep package-manager setup aligned with the other JavaScript workflow.
+      - name: Set up JavaScript package manager
+        if: inputs.runtime == 'javascript' && (inputs.lint_javascript || inputs.run_unit_tests || inputs.run_integration_tests)
+        id: package-manager
+        working-directory: ${{ inputs.javascript_working_directory }}
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package_manager }}
+          PACKAGE_MANAGER_VERSION: ${{ inputs.package_manager_version }}
+          PACKAGE_DIRECTORY: ${{ inputs.javascript_working_directory }}
+        run: |
+          set -euo pipefail
+          version=$(node <<'NODE'
+          const fs = require('node:fs');
+          const manager = process.env.PACKAGE_MANAGER;
+          const requested = process.env.PACKAGE_MANAGER_VERSION;
+          const fail = message => { console.error(message); process.exit(1); };
+          const lockfiles = {npm: 'package-lock.json', pnpm: 'pnpm-lock.yaml', yarn: 'yarn.lock'};
+          if (!Object.hasOwn(lockfiles, manager)) fail('package_manager must be npm, pnpm, or yarn');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          let declaredVersion = '';
+          if (pkg.packageManager !== undefined) {
+            const match = /^(npm|pnpm|yarn)@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+sha(?:224|256|384|512)\.[0-9a-f]+)?$/.exec(pkg.packageManager);
+            if (!match) fail('package.json packageManager must pin an exact npm, pnpm, or Yarn version');
+            if (match[1] !== manager) fail('package_manager conflicts with package.json packageManager');
+            declaredVersion = match[2];
+          }
+          if (requested && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(requested)) fail('package_manager_version must be an exact version');
+          if (requested && declaredVersion && requested !== declaredVersion) fail('package_manager_version conflicts with package.json packageManager');
+          const version = requested || declaredVersion;
+          if (manager !== 'npm' && !version) fail('Pin the package manager in package.json or package_manager_version');
+          if (manager === 'yarn' && Number(version.split('.')[0]) < 2) fail('Yarn Classic is unsupported; use modern Yarn with nodeLinker: node-modules');
+          if (!fs.existsSync(lockfiles[manager])) fail(`Missing ${lockfiles[manager]} in javascript_working_directory`);
+          console.log(version);
+          NODE
+          )
+
+          if [ -n "$version" ]; then
+            package="$PACKAGE_MANAGER"
+            if [ "$PACKAGE_MANAGER" = yarn ]; then package="@yarnpkg/cli-dist"; fi
+            manager_prefix="$RUNNER_TEMP/javascript-package-manager"
+            npm install --global --prefix "$manager_prefix" "${package}@${version}"
+            echo "$manager_prefix/bin" >> "$GITHUB_PATH"
+            export PATH="$manager_prefix/bin:$PATH"
+          fi
+          actual_version=$("$PACKAGE_MANAGER" --version)
+          if [ -n "$version" ] && [ "$actual_version" != "$version" ]; then
+            echo "Active package manager version does not match the configured version" >&2
+            exit 1
+          fi
+          case "$PACKAGE_MANAGER" in
+            npm) lockfile="package-lock.json"; cache_path=$(npm config get cache) ;;
+            pnpm) lockfile="pnpm-lock.yaml"; cache_path=$(pnpm store path --silent) ;;
+            yarn)
+              test "$(yarn config get nodeLinker)" = node-modules \
+                || { echo "Yarn requires nodeLinker: node-modules in .yarnrc.yml" >&2; exit 1; }
+              lockfile=yarn.lock
+              cache_path=$(yarn config get cacheFolder)
+              ;;
+          esac
+          {
+            echo "version=$actual_version"
+            echo "lockfile=$PACKAGE_DIRECTORY/$lockfile"
+            echo "cache_path=$cache_path"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Cache JavaScript dependencies
+        if: inputs.runtime == 'javascript' && (inputs.lint_javascript || inputs.run_unit_tests || inputs.run_integration_tests)
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ${{ steps.package-manager.outputs.cache_path }}
+          key: ${{ runner.os }}-${{ runner.arch }}-jsdeps-${{ inputs.package_manager }}-${{ steps.package-manager.outputs.version }}-${{ steps.setup-node.outputs.node-version }}-${{ hashFiles(steps.package-manager.outputs.lockfile) }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-jsdeps-${{ inputs.package_manager }}-${{ steps.package-manager.outputs.version }}-${{ steps.setup-node.outputs.node-version }}-
+
+      - name: Install JavaScript dependencies
+        if: inputs.runtime == 'javascript' && (inputs.lint_javascript || inputs.run_unit_tests || inputs.run_integration_tests)
+        working-directory: ${{ inputs.javascript_working_directory }}
+        env:
+          CI: "true"
+          PACKAGE_MANAGER: ${{ inputs.package_manager }}
+        run: |
+          case "$PACKAGE_MANAGER" in
+            npm) npm ci --include=dev ;;
+            pnpm) pnpm install --frozen-lockfile --prod=false ;;
+            yarn) yarn install --immutable ;;
+            *) echo "Unsupported package manager" >&2; exit 1 ;;
+          esac
+
+      - name: Lint JavaScript
+        if: inputs.runtime == 'javascript' && inputs.lint_javascript
+        id: javascript-lint
+        working-directory: ${{ inputs.javascript_working_directory }}
+        env:
+          CI: "true"
+          LINT_COMMAND: ${{ inputs.javascript_lint_command != '' && inputs.javascript_lint_command || format('{0} run lint', inputs.package_manager) }}
+        run: |
+          test -n "$LINT_COMMAND" || { echo "javascript_lint_command must not be empty" >&2; exit 1; }
+          bash -eo pipefail -c "$LINT_COMMAND"
+
       - name: Run unit tests
         if: inputs.run_unit_tests
         id: unit-tests
+        working-directory: ${{ inputs.runtime == 'javascript' && inputs.javascript_working_directory || '.' }}
         env:
-          UNIT_TEST_COMMAND: ${{ inputs.unit_test_command }}
+          CI: "true"
+          UNIT_TEST_COMMAND: ${{ inputs.unit_test_command != '' && inputs.unit_test_command || (inputs.runtime == 'javascript' && format('{0} test', inputs.package_manager) || 'pytest -q') }}
         run: bash -eo pipefail -c "$UNIT_TEST_COMMAND"
 
       - name: Upload coverage artifact
         if: inputs.run_unit_tests && always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: coverage-report
-          path: |
-            coverage.xml
-            htmlcov/
+          name: ${{ inputs.runtime == 'javascript' && format('coverage-report-{0}', inputs.app_name) || 'coverage-report' }}
+          path: ${{ inputs.coverage_artifact_path }}
           if-no-files-found: ignore
           retention-days: 7
 
       - name: Run integration tests
         if: inputs.run_integration_tests
         id: integration-tests
+        working-directory: ${{ inputs.runtime == 'javascript' && inputs.javascript_working_directory || '.' }}
         env:
+          CI: "true"
           INTEGRATION_TEST_COMMAND: ${{ inputs.integration_test_command }}
         run: bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
 
@@ -386,7 +551,7 @@ jobs:
         if: inputs.run_integration_tests && always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: integration-artifacts
+          name: ${{ inputs.runtime == 'javascript' && format('integration-artifacts-{0}', inputs.app_name) || 'integration-artifacts' }}
           path: ${{ inputs.integration_artifact_path }}
           if-no-files-found: ignore
           retention-days: 7
@@ -519,6 +684,9 @@ jobs:
         if: always()
         id: build-summary
         env:
+          RUFF_FORMAT_OUTCOME: ${{ steps.ruff-format.outcome || 'skipped' }}
+          RUFF_LINT_OUTCOME: ${{ steps.ruff-lint.outcome || 'skipped' }}
+          JAVASCRIPT_LINT_OUTCOME: ${{ steps.javascript-lint.outcome || 'skipped' }}
           HADOLINT_OUTCOME: ${{ steps.hadolint.outcome || 'skipped' }}
           UNIT_OUTCOME: ${{ steps.unit-tests.outcome || 'skipped' }}
           INT_OUTCOME: ${{ steps.integration-tests.outcome || 'skipped' }}
@@ -534,6 +702,9 @@ jobs:
             echo "| Check | Result |"
             echo "| --- | --- |"
             echo "| Dockerfile lint | ${HADOLINT_OUTCOME} |"
+            echo "| Python formatting | ${RUFF_FORMAT_OUTCOME} |"
+            echo "| Python lint | ${RUFF_LINT_OUTCOME} |"
+            echo "| JavaScript lint | ${JAVASCRIPT_LINT_OUTCOME} |"
             echo "| Unit tests | ${UNIT_OUTCOME} |"
             echo "| Integration tests | ${INT_OUTCOME} |"
             echo "| Container smoke test | ${CONTAINER_SMOKE_OUTCOME} |"
@@ -552,6 +723,8 @@ jobs:
       - name: Share summary in pull requests
         if: always() && github.event_name == 'pull_request' && env.LOCAL_ACT != 'true'
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd
+        env:
+          SUMMARY_IDENTIFIER: ${{ inputs.service_identifier }}/${{ inputs.app_name }}
         with:
           script: |
             const fs = require('fs');
@@ -566,7 +739,7 @@ jobs:
               return;
             }
             const body = fs.readFileSync(summaryPath, 'utf8');
-            const marker = '<!-- container-image-build summary -->';
+            const marker = `<!-- container-image-build summary ${process.env.SUMMARY_IDENTIFIER} -->`;
             const finalBody = `${marker}\n${body}`;
             const comments = await github.paginate(github.rest.issues.listComments, {
               issue_number: issueNumber,

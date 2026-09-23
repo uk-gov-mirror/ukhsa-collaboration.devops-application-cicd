@@ -2,7 +2,7 @@
 
 This workflow is now an AWS ECS orchestrator built from two smaller reusable workflows:
 
-- `build-test-container.yml` for linting, Python checks, image build, optional push, and optional signing.
+- `build-test-container.yml` for linting, runtime-specific checks, image build, and optional push.
 - `deploy-aws-ecs.yml` for ECS task-definition updates, ECS service deployment, optional post-deploy tests, and smoke checks.
 
 The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs.yml`, but the implementation is split so build logic and deployment logic can evolve independently.
@@ -212,7 +212,7 @@ jobs:
 ```
 
 ## Regression Tests
-`_test-container-image-build-python-aws-ecs.yml` reuses the orchestrator against a lightweight fixture in `fixtures/container_image_app`.
+`_test-container-image-build-python-aws-ecs.yml` reuses the orchestrator against a lightweight fixture in `fixtures/python_container_app`.
 
 - The fixture ships with a pinned `pyproject.toml` (including `ruff` and `pytest`) and uses `tool.pytest.ini_options` so no `PYTHONPATH` overrides are required.
 - The regression run now performs a post-build container smoke test and confirms that custom Docker build args are visible inside the running fixture image.
