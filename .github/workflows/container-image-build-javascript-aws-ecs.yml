@@ -1,8 +1,49 @@
-name: "Container Image Build - Python/AWS ECS"
+name: "Container Image Build - JavaScript/AWS ECS"
 
 on:
   workflow_call:
     inputs:
+      package_manager:
+        description: JavaScript package manager (npm, pnpm, or modern Yarn with node-modules linking).
+        required: false
+        default: "npm"
+        type: string
+      package_manager_version:
+        description: Exact package manager version; must agree with package.json when both are supplied. Required for pnpm/Yarn unless package.json pins it.
+        required: false
+        default: ""
+        type: string
+      node_version:
+        description: Node.js version; overrides node_version_file. Defaults to 22 when neither is supplied.
+        required: false
+        default: ""
+        type: string
+      node_version_file:
+        description: Repository-relative Node.js version file (for example .nvmrc).
+        required: false
+        default: ""
+        type: string
+      javascript_working_directory:
+        description: Package directory relative to the repository root, independent of docker_context.
+        required: false
+        default: "."
+        type: string
+      lint_javascript:
+        description: Run the JavaScript lint command.
+        required: false
+        default: true
+        type: boolean
+      javascript_lint_command:
+        description: Lint command in javascript_working_directory; defaults to the selected package manager running lint.
+        required: false
+        default: ""
+        type: string
+      coverage_artifact_path:
+        description: Repository-relative coverage paths (newline-delimited).
+        required: false
+        default: |
+          coverage/
+        type: string
       app_name:
         description: Name of the application; used for tagging images and deployment messaging.
         required: true
@@ -72,9 +113,9 @@ on:
         default: true
         type: boolean
       unit_test_command:
-        description: Command used to execute unit tests.
+        description: Unit-test command; defaults to the selected package manager running test.
         required: false
-        default: "pytest -q"
+        default: ""
         type: string
       run_integration_tests:
         description: Enable integration tests during the build job.
@@ -116,16 +157,6 @@ on:
         required: false
         default: true
         type: boolean
-      lint_python:
-        description: Run Ruff format and lint checks.
-        required: false
-        default: true
-        type: boolean
-      pip_install_extras:
-        description: Optional PEP 508 extras (e.g. "dev") to install when pyproject.toml is present.
-        required: false
-        default: "dev"
-        type: string
       deploy_environments:
         description: JSON array of deployment descriptors consumed by the ECS deploy workflow.
         required: false
@@ -177,6 +208,12 @@ jobs:
   build:
     uses: ./.github/workflows/build-test-container.yml
     with:
+      runtime: javascript
+      package_manager: ${{ inputs.package_manager }}
+      package_manager_version: ${{ inputs.package_manager_version }}
+      node_version: ${{ inputs.node_version }}
+      node_version_file: ${{ inputs.node_version_file }}
+      javascript_working_directory: ${{ inputs.javascript_working_directory }}
       app_name: ${{ inputs.app_name }}
       service_identifier: ${{ inputs.service_identifier }}
       aws_region: ${{ inputs.aws_region }}
@@ -190,8 +227,11 @@ jobs:
       cache_from: ${{ inputs.cache_from }}
       cache_to: ${{ inputs.cache_to }}
       build_args: ${{ inputs.build_args }}
+      lint_javascript: ${{ inputs.lint_javascript }}
+      javascript_lint_command: ${{ inputs.javascript_lint_command != '' && inputs.javascript_lint_command || format('{0} run lint', inputs.package_manager) }}
+      coverage_artifact_path: ${{ inputs.coverage_artifact_path }}
       run_unit_tests: ${{ inputs.run_unit_tests }}
-      unit_test_command: ${{ inputs.unit_test_command }}
+      unit_test_command: ${{ inputs.unit_test_command != '' && inputs.unit_test_command || format('{0} test', inputs.package_manager) }}
       run_integration_tests: ${{ inputs.run_integration_tests }}
       integration_test_command: ${{ inputs.integration_test_command }}
       integration_artifact_path: ${{ inputs.integration_artifact_path }}
@@ -200,8 +240,6 @@ jobs:
       push_image: ${{ inputs.push_image }}
       release_tag: ${{ inputs.release_tag }}
       lint_dockerfile: ${{ inputs.lint_dockerfile }}
-      lint_python: ${{ inputs.lint_python }}
-      pip_install_extras: ${{ inputs.pip_install_extras }}
       ecr_registry_namespace: ${{ inputs.ecr_registry_namespace }}
     secrets:
       AWS_REGISTRY_ROLE: ${{ secrets.AWS_REGISTRY_ROLE }}
@@ -211,6 +249,12 @@ jobs:
     if: inputs.push_image && inputs.release_tag != '' && inputs.deploy_environments != '[]'
     uses: ./.github/workflows/deploy-aws-ecs.yml
     with:
+      runtime: javascript
+      package_manager: ${{ inputs.package_manager }}
+      package_manager_version: ${{ inputs.package_manager_version }}
+      node_version: ${{ inputs.node_version }}
+      node_version_file: ${{ inputs.node_version_file }}
+      javascript_working_directory: ${{ inputs.javascript_working_directory }}
       app_name: ${{ inputs.app_name }}
       service_identifier: ${{ inputs.service_identifier }}
       aws_region: ${{ inputs.aws_region }}

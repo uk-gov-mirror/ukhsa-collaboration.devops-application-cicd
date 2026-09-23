@@ -11,6 +11,7 @@ on:
       - .github/workflows/deploy-aws-ecs.yml
       - .github/scripts/build/**
       - .github/scripts/deploy/**
+      - fixtures/python_container_app/**
       - docs/container-image-build-python-aws-ecs.md
 
 jobs:

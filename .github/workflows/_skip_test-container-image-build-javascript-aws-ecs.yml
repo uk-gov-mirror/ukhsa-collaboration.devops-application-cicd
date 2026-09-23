@@ -1,0 +1,21 @@
+name: "Test Container Image Build Workflow - JavaScript"
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - .github/workflows/_test-container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/_skip_test-container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/container-image-build-javascript-aws-ecs.yml
+      - .github/workflows/build-test-container.yml
+      - .github/workflows/deploy-aws-ecs.yml
+      - fixtures/javascript_container_app*/**
+      - docs/container-image-build-javascript-aws-ecs.md
+      - tests/**
+
+jobs:
+  container_image_build_regression_test:
+    name: No workflow changes detected
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No build required"

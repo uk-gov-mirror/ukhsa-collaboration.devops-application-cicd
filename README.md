@@ -11,3 +11,4 @@ See the [Quick Start section](docs/container-image-build-python-aws-ecs.md#quick
 ## Workflows
 
 1. [Container Image Build (Python/AWS ECS)](docs/container-image-build-python-aws-ecs.md)
+2. [Container Image Build (JavaScript/AWS ECS)](docs/container-image-build-javascript-aws-ecs.md)

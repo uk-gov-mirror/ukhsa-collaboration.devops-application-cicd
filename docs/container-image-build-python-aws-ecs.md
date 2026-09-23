@@ -2,7 +2,7 @@
 
 This workflow is now an AWS ECS orchestrator built from two smaller reusable workflows:
 
-- `build-test-container.yml` for linting, Python checks, image build, optional push, and optional signing.
+- `build-test-container.yml` for linting, runtime-specific checks, image build, and optional push.
 - `deploy-aws-ecs.yml` for ECS task-definition updates, ECS service deployment, optional post-deploy tests, and smoke checks.
 
 The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs.yml`, but the implementation is split so build logic and deployment logic can evolve independently.
@@ -17,10 +17,10 @@ The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs
 
 ## Prerequisites
 - The calling repository must contain a Dockerfile and whatever Python/test assets your commands require.
-- When pushing to ECR or signing images, provide either:
+- When pushing to ECR, provide either:
   - `registry_hostname`, or
   - `registry_account_id` so the workflow can derive the ECR hostname.
-- When pushing or signing against the central ECR account, provide an IAM role ARN either via:
+- When pushing against the central ECR account, provide an IAM role ARN either via:
   - input `aws_registry_role_to_assume`, or
   - `registry_account_id` plus `aws_registry_role_name`, or
   - secret `AWS_REGISTRY_ROLE`.
@@ -50,7 +50,7 @@ The public entrypoint is `.github/workflows/container-image-build-python-aws-ecs
 | `container_smoke_test_command` | string | `docker run --rm "$IMAGE_UNDER_TEST"` | Smoke-test command. The workflow exports `IMAGE_UNDER_TEST` for the command to use. |
 | `registry_account_id` | string | `""` | AWS account id for ECR when `registry_hostname` is not supplied. |
 | `aws_registry_role_name` | string | `""` | IAM role name in the central registry account; combined with `registry_account_id` to build the role ARN. |
-| `aws_registry_role_to_assume` | string | `""` | IAM role ARN used only for central ECR image push and signing. |
+| `aws_registry_role_to_assume` | string | `""` | IAM role ARN used only for central ECR image push. |
 | `push_image` | boolean | `false` | Push built image to the registry. Required for deployment. |
 | `release_tag` | string | `""` | Optional release tag applied to the pushed image. |
 | `deploy_environments` | string | `[]` | JSON array describing deployments. See below. |
@@ -212,7 +212,7 @@ jobs:
 ```
 
 ## Regression Tests
-`_test-container-image-build-python-aws-ecs.yml` reuses the orchestrator against a lightweight fixture in `fixtures/container_image_app`.
+`_test-container-image-build-python-aws-ecs.yml` reuses the orchestrator against a lightweight fixture in `fixtures/python_container_app`.
 
 - The fixture ships with a pinned `pyproject.toml` (including `ruff` and `pytest`) and uses `tool.pytest.ini_options` so no `PYTHONPATH` overrides are required.
 - The regression run now performs a post-build container smoke test and confirms that custom Docker build args are visible inside the running fixture image.

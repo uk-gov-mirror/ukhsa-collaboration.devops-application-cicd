@@ -204,6 +204,10 @@ cython_debug/
 # Ruff stuff:
 .ruff_cache/
 
+# JavaScript dependencies and coverage
+node_modules/
+coverage/
+
 # PyPI configuration file
 .pypirc
 
@@ -214,3 +218,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Yarn install state (lockfiles and configuration remain tracked)
+**/.yarn/install-state.gz
+**/.yarn/build-state.yml
+**/.yarn/cache/
+**/.yarn/unplugged/
+.pnp.*
+.pnpm-store/
