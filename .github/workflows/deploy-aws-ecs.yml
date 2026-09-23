@@ -262,7 +262,10 @@ jobs:
           const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
           let declaredVersion = '';
           if (pkg.packageManager !== undefined) {
-            const match = /^(npm|pnpm|yarn)@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)(?:\+sha(?:224|256|384|512)\.[0-9a-f]+)?$/.exec(pkg.packageManager);
+            if (/\+sha(?:224|256|384|512)\.[0-9a-f]+$/i.test(pkg.packageManager)) {
+              fail('package.json packageManager checksum digest is not supported; pin an exact version without a checksum digest');
+            }
+            const match = /^(npm|pnpm|yarn)@(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)$/.exec(pkg.packageManager);
             if (!match) fail('package.json packageManager must pin an exact npm, pnpm, or Yarn version');
             if (match[1] !== manager) fail('package_manager conflicts with package.json packageManager');
             declaredVersion = match[2];

@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       aws_region:
-        description: AWS Region for registry, signing, and deployment operations.
+        description: AWS Region for registry and deployment operations.
         required: false
         default: "eu-west-2"
         type: string
@@ -42,12 +42,12 @@ on:
         default: ""
         type: string
       aws_registry_role_name:
-        description: IAM role name in the central registry account for image push and signing operations.
+        description: IAM role name in the central registry account for image push operations.
         required: false
         default: ""
         type: string
       aws_registry_role_to_assume:
-        description: IAM role ARN assumed in the central registry account for image push and signing operations.
+        description: IAM role ARN assumed in the central registry account for image push operations.
         required: false
         default: ""
         type: string

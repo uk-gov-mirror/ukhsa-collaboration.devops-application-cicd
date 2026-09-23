@@ -132,6 +132,7 @@ class PackageManagerTests(unittest.TestCase):
             ({"manager": "pnpm"}, "Pin the package manager"),
             ({"manager": "yarn", "version": "1.22.22"}, "Yarn Classic"),
             ({"manager": "pnpm", "version": "latest"}, "exact version"),
+            ({"manager": "pnpm", "declaration": "pnpm@10.34.5+sha512.deadbeef"}, "checksum digest"),
             ({"declaration": "pnpm@10.34.5"}, "conflicts"),
             (
                 {
