@@ -405,7 +405,10 @@ jobs:
           DEPLOY_ENVIRONMENT: ${{ matrix.environment.name }}
           BASE_URL: ${{ matrix.environment.base_url }}
           INTEGRATION_TEST_COMMAND: ${{ matrix.environment.integration_test_command }}
-        run: bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
+        run: |
+          test -n "$INTEGRATION_TEST_COMMAND" \
+            || { echo "matrix.environment.integration_test_command must not be empty when set" >&2; exit 1; }
+          bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
 
       - name: Smoke test deployed service
         if: matrix.environment.smoke_test_url != ''

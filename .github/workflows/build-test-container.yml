@@ -548,7 +548,10 @@ jobs:
         env:
           CI: "true"
           INTEGRATION_TEST_COMMAND: ${{ inputs.integration_test_command }}
-        run: bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
+        run: |
+          test -n "$INTEGRATION_TEST_COMMAND" \
+            || { echo "integration_test_command must not be empty when run_integration_tests is enabled" >&2; exit 1; }
+          bash -eo pipefail -c "$INTEGRATION_TEST_COMMAND"
 
       - name: Upload integration artifacts
         if: inputs.run_integration_tests && always()

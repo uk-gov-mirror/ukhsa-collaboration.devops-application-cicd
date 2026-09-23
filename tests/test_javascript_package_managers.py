@@ -163,6 +163,22 @@ class PackageManagerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Missing package-lock.json", result.stderr)
 
+    def test_integration_command_required(self):
+        result = subprocess.run(
+            [
+                "bash",
+                "-eo",
+                "pipefail",
+                "-c",
+                BUILD["Run integration tests"]["run"],
+            ],
+            env=self.env | {"INTEGRATION_TEST_COMMAND": ""},
+            capture_output=True,
+            text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("integration_test_command must not be empty", result.stderr)
+
     def test_install_commands(self):
         for manager, command in [
             ("npm", "ci --include=dev"),
