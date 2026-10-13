@@ -351,6 +351,12 @@ jobs:
 
           echo "value=$current_task_definition" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Python for deployment tasks
+        if: inputs.runtime == 'python' && (matrix.environment.predeploy_script != '' || matrix.environment.deploy_script != '' || matrix.environment.integration_test_command != '' || matrix.environment.post_deploy_test_command != '')
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          cache: "pip"
+
       - name: Run pre-deploy script
         if: matrix.environment.predeploy_script != ''
         env:
@@ -382,12 +388,6 @@ jobs:
           service: ${{ matrix.environment.ecs_service }}
           cluster: ${{ matrix.environment.ecs_cluster }}
           wait-for-service-stability: true
-
-      - name: Set up Python for deployment tasks
-        if: inputs.runtime == 'python' && (matrix.environment.integration_test_command != '' || matrix.environment.post_deploy_test_command != '')
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
-        with:
-          cache: "pip"
 
       - name: Run post-deploy script
         if: matrix.environment.deploy_script != ''
